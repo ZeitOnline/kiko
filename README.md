@@ -1,0 +1,120 @@
+# [Claude Code](https://code.claude.com/) + [Apple Container](https://github.com/apple/container) sandbox
+
+This setup runs Claude Code inside Apple's `container` runtime, so that
+the agent can only see the project directory it was started in — not the
+rest of the host's home directory.
+
+The intended boundary is:
+
+    macOS
+      |
+      +-- $PWD ---------------------- RW --> /workspace
+      |
+      +-- ~/.claude ----------------- RW --> /home/kiko/.claude
+      |
+      +-- everything else in $HOME
+              |
+              +------ NOT MOUNTED
+
+Claude's configuration deliberately stays on the host in `~/.claude`,
+so host-side tooling (e.g. [AgentsView](https://www.agentsview.io))
+can keep reading sessions, history and settings while the agent
+itself runs in the container.
+
+## 1. Build
+
+From this directory run:
+
+    container build -t kiko
+
+This builds the image `kiko:latest`.
+
+## 2. Run
+
+From the project directory that Claude should work in:
+
+    /path/to/this/repo/run.sh
+
+Claude starts with:
+
+    /workspace       = the current working directory
+    ~/.claude        = the host's ~/.claude
+
+Arguments are passed straight to `claude`, which is the image's
+entrypoint:
+
+    ./run.sh --help
+    ./run.sh -p 'summarise this repository'
+
+It can be useful to add a shell alias so Claude can be started
+as `claude`:
+
+    alias claude "/path/to/this/repo/run.sh"
+
+## 3. What is in the image
+
+Base is `ubuntu:26.04` with a non-root user `kiko`:
+
+  - `curl`, `git`, `jq`, `ripgrep`
+  - `uv` and Python 3.14
+  - `uv`-installed tools: `lefthook`, `ruff`, `tox`, `yq`
+  - Claude Code, installed via `https://claude.ai/install.sh`
+
+`~/.claude.json` is symlinked to `~/.claude/claude.json` so that this
+file also lives in the host-mounted configuration directory instead of
+in the container's home. This way the initial setup only needs to be
+run once.
+
+## 4. Container settings
+
+`run.sh` runs the container with:
+
+  - `--cap-drop ALL` — no Linux capabilities
+  - `--dns 1.1.1.1` — fixed resolver, independent of host DNS
+  - `--init` — proper PID 1 for signal handling and reaping
+  - `--rm` — no container state kept between runs
+  - `--interactive --tty` — interactive Claude session
+  - two bind mounts only: the workspace and `~/.claude`
+
+## 5. Verify the boundary
+
+Inside the container, these should fail or be absent:
+
+    ls /Users
+    ls /Volumes
+
+These should exist:
+
+    ls /workspace
+    ls ~/.claude
+
+## 6. Important properties
+
+Do not extend the run command to mount:
+
+    $HOME
+    ~/.ssh
+    ~/.kube
+    ~/.config
+    ~/Library
+
+The workspace and `~/.claude` are the only host directories exposed to
+the container.
+
+Note that `~/.claude` is mounted read-write: this is what makes
+host-side session tooling work, but it also means the agent can write to
+its own configuration. That is an accepted trade-off here.
+
+There is currently no SSH integration. The container has no access to
+host SSH keys or the host `ssh-agent`, so `git` operations against
+private remotes will not work from inside the sandbox.
+
+## 7. Network
+
+This configuration intentionally does not claim to restrict network
+egress. Claude Code needs network access to Anthropic, and additional
+tools may need it too.
+
+If stronger network isolation is required, add a network policy at the
+Apple Container/VM layer rather than assuming filesystem isolation also
+restricts networking.
