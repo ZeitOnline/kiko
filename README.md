@@ -79,7 +79,46 @@ as `claude`:
 
     alias claude "/path/to/this/repo/run.sh"
 
-## 4. What is in the image
+## 4. Mapping extra directories
+
+Sometimes Claude needs to see more than the current project — sibling
+repositories, shared documentation. `run.sh` maps additional host
+directories into the workspace with `--dir`:
+
+    ./run.sh --dir ~/work/ops-docs
+
+Each directory shows up as `/workspace/<basename>`, so the example
+above becomes `/workspace/ops-docs`. Extra directories are mounted
+**read-only** by default; append `:rw` for a writable one:
+
+    ./run.sh --dir ~/work/ops-docs:rw
+
+The option can be repeated and also takes a comma-separated list, and
+relative paths stay relative to the directory `run.sh` is started in:
+
+    ./run.sh --dir ../foo --dir ../bar,../scratch
+
+For a fixed set of directories, keep the invocation in a shell alias or
+a small wrapper script per project. There is deliberately no config file
+that `run.sh` picks up on its own: what Claude can see should always be
+visible in the command that started it.
+
+Everything `run.sh` does not recognise is passed through to `claude`
+unchanged, so `./run.sh --dir ../foo -p 'compare both repos'` works.
+Use `--` if a Claude argument would otherwise be mistaken for one of the
+options above, and `./run.sh --sandbox-help` to list them.
+
+Two things to keep in mind:
+
+  - The mount target is derived from the basename, so two directories
+    with the same name cannot both be mapped. `run.sh` fails with an
+    error instead of silently mounting only one of them.
+  - The extra directories appear *inside* `/workspace`, which is the
+    project's own git checkout, so `git status` in the container will
+    list them as untracked. Adding them to the project's `.gitignore`
+    (or `.git/info/exclude`) keeps that quiet.
+
+## 5. What is in the image
 
 Base is `ubuntu:26.04` with a non-root user `kiko`:
 
@@ -93,7 +132,7 @@ file also lives in the host-mounted configuration directory instead of
 in the container's home. This way the initial setup only needs to be
 run once.
 
-## 5. Container settings
+## 6. Container settings
 
 `run.sh` runs the container with:
 
@@ -102,9 +141,11 @@ run once.
   - `--init` — proper PID 1 for signal handling and reaping
   - `--rm` — no container state kept between runs
   - `--interactive --tty` — interactive Claude session
-  - two bind mounts only: the workspace and `~/.claude`
+  - two bind mounts by default: the workspace and `~/.claude`, plus
+    any directory added with `--dir` (see section 4), read-only
+    unless `:rw` was requested
 
-## 6. Verify the boundary
+## 7. Verify the boundary
 
 Inside the container, these should fail or be absent:
 
@@ -116,7 +157,7 @@ These should exist:
     ls /workspace
     ls ~/.claude
 
-## 7. Important properties
+## 8. Important properties
 
 Do not extend the run command to mount:
 
@@ -126,8 +167,11 @@ Do not extend the run command to mount:
     ~/.config
     ~/Library
 
-The workspace and `~/.claude` are the only host directories exposed to
-the container.
+The workspace and `~/.claude` are the only host directories exposed by
+default. Directories added with `--dir` widen that boundary
+deliberately and one at a time, which is the point: keep them as
+narrow as the task needs, and leave them read-only unless Claude
+really has to write there. `--dir ~` defeats the whole setup.
 
 Note that `~/.claude` is mounted read-write: this is what makes
 host-side session tooling work, but it also means the agent can write to
@@ -137,7 +181,7 @@ There is currently no SSH integration. The container has no access to
 host SSH keys or the host `ssh-agent`, so `git` operations against
 private remotes will not work from inside the sandbox.
 
-## 8. Network
+## 9. Network
 
 This configuration intentionally does not claim to restrict network
 egress. Claude Code needs network access to Anthropic, and additional
