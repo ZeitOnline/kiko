@@ -21,7 +21,35 @@ so host-side tooling (e.g. [AgentsView](https://www.agentsview.io))
 can keep reading sessions, history and settings while the agent
 itself runs in the container.
 
-## 1. Build
+## 1. Install `container`
+
+Apple's `container` needs a Mac with Apple silicon running macOS 26
+(Tahoe) or later. Homebrew has it as a regular formula (not a cask):
+
+    brew install container
+    container system kernel set --recommended
+    brew services start container
+
+`brew services start` runs `container system start` as a keep-alive
+launchd service, so the runtime also comes back after a reboot. Because
+it runs non-interactively, install the Linux kernel *first*: started by
+hand, `container system start` would otherwise prompt for it
+interactively.
+
+Check that the service is up:
+
+    container system status
+    container list --all
+
+The second command should print an empty table. Logs go to
+`$(brew --prefix)/var/log/container.log`. To shut the runtime down
+again, run `brew services stop container`.
+
+Apple itself distributes `container` as a signed installer package from
+the [GitHub releases page](https://github.com/apple/container/releases);
+use that instead if you prefer not to go through Homebrew.
+
+## 2. Build
 
 From this directory run:
 
@@ -29,7 +57,7 @@ From this directory run:
 
 This builds the image `kiko:latest`.
 
-## 2. Run
+## 3. Run
 
 From the project directory that Claude should work in:
 
@@ -51,7 +79,7 @@ as `claude`:
 
     alias claude "/path/to/this/repo/run.sh"
 
-## 3. What is in the image
+## 4. What is in the image
 
 Base is `ubuntu:26.04` with a non-root user `kiko`:
 
@@ -65,7 +93,7 @@ file also lives in the host-mounted configuration directory instead of
 in the container's home. This way the initial setup only needs to be
 run once.
 
-## 4. Container settings
+## 5. Container settings
 
 `run.sh` runs the container with:
 
@@ -76,7 +104,7 @@ run once.
   - `--interactive --tty` — interactive Claude session
   - two bind mounts only: the workspace and `~/.claude`
 
-## 5. Verify the boundary
+## 6. Verify the boundary
 
 Inside the container, these should fail or be absent:
 
@@ -88,7 +116,7 @@ These should exist:
     ls /workspace
     ls ~/.claude
 
-## 6. Important properties
+## 7. Important properties
 
 Do not extend the run command to mount:
 
@@ -109,7 +137,7 @@ There is currently no SSH integration. The container has no access to
 host SSH keys or the host `ssh-agent`, so `git` operations against
 private remotes will not work from inside the sandbox.
 
-## 7. Network
+## 8. Network
 
 This configuration intentionally does not claim to restrict network
 egress. Claude Code needs network access to Anthropic, and additional
