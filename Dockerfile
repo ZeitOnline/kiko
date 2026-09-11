@@ -1,10 +1,13 @@
 FROM ghcr.io/astral-sh/uv:latest AS uv
 FROM ubuntu:26.04 AS kiko
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get update
-RUN DEBIAN_FRONTEND=noninteractive apt-get install --yes curl git jq ripgrep
-RUN DEBIAN_FRONTEND=noninteractive apt-get install --yes nginx postgresql
-RUN DEBIAN_FRONTEND=noninteractive apt-get install --yes kustomize skopeo
+# `update` and `install` in one layer: `apt-get update` exits 0 even when
+# every index fetch fails, so a separate layer would cache an empty index.
+RUN DEBIAN_FRONTEND=noninteractive apt-get update --error-on=any \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --yes \
+        curl git jq ripgrep \
+        nginx postgresql \
+        kustomize skopeo
 RUN curl -fsSL https://pb33f.io/wiretap/install.sh | bash
 
 # install postgrest
