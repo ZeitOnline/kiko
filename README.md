@@ -55,9 +55,20 @@ use that instead if you prefer not to go through Homebrew.
 
 From this directory run:
 
-    container build -t kiko
+    container build --dns 1.1.1.1 -t kiko
 
 This builds the image `kiko:latest`.
+
+`--dns` matters on the first build: it starts the build VM with a fixed
+resolver, the same one `run.sh` uses (see section 6). Without it the
+VM asks the host forwarder at `192.168.64.1` over UDP, which some VPN
+clients (e.g. Zscaler) swallow; `apt-get update` then times out, exits
+0 with an empty index, and the following `apt-get install` fails with
+`Unable to locate package`. The flag only applies when `container
+build` creates the build VM, so to change it later recreate the VM:
+
+    container builder stop && container builder delete
+    container builder start --dns 1.1.1.1
 
 ## 3. Run
 
