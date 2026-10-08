@@ -8,9 +8,9 @@ The intended boundary is:
 
     macOS
       |
-      +-- $PWD ---------------------- RW --> /workspace
+      +-- $PWD (if allow-listed) -- RW --> /workspace
       |
-      +-- ~/.claude ----------------- RW --> /home/kiko/.claude
+      +-- ~/.claude -------------- RW --> /home/kiko/.claude
       |
       +-- everything else in $HOME
               |
@@ -68,6 +68,9 @@ Claude starts with:
     /workspace       = the current working directory
     ~/.claude        = the host's ~/.claude
 
+The current directory is only mounted if it lies inside one of the
+allowed directories (see section 5).
+
 Arguments are passed straight to `claude`, which is the image's
 entrypoint:
 
@@ -118,7 +121,36 @@ Two things to keep in mind:
     list them as untracked. Adding them to the project's `.gitignore`
     (or `.git/info/exclude`) keeps that quiet.
 
-## 5. What is in the image
+## 5. Restricting where Claude may be started
+
+Mounting `$PWD` is only safe as long as `$PWD` is a project directory.
+Started from `~` — or from `~/Documents`, or `/` — the same command
+would hand the whole tree to the agent. To make that mistake loud
+instead of silent, `run.sh` checks the current directory against an
+allow-list before mounting it:
+
+    KIKO_ALLOWED_DIRS='~/work/'
+
+The variable holds a space-separated list of directories; the current
+directory has to be one of them or live below one. The default is
+`~/work/`. Widen it in the shell profile if projects live elsewhere:
+
+    export KIKO_ALLOWED_DIRS='~/work/ ~/projects/'
+
+If the current directory is outside all of them, `run.sh` prints a
+warning and starts the container *without* mounting it. `/workspace`
+is then the empty directory from the image, so Claude comes up with
+nothing of the host to look at rather than with the wrong thing:
+
+    run.sh: warning: /Users/me is not inside any of the allowed directories (~/work/)
+    run.sh: warning: not mounting it as /workspace; set $KIKO_ALLOWED_DIRS to allow it
+
+Entries that do not exist are ignored, and an empty
+`KIKO_ALLOWED_DIRS` allows nothing at all. The check only covers the
+current directory — directories added with `--dir` (section 4) are
+explicit by nature and are mounted as asked.
+
+## 6. What is in the image
 
 Base is `ubuntu:26.04` with a non-root user `kiko`:
 
@@ -132,7 +164,7 @@ file also lives in the host-mounted configuration directory instead of
 in the container's home. This way the initial setup only needs to be
 run once.
 
-## 6. Container settings
+## 7. Container settings
 
 `run.sh` runs the container with:
 
@@ -141,11 +173,12 @@ run once.
   - `--init` — proper PID 1 for signal handling and reaping
   - `--rm` — no container state kept between runs
   - `--interactive --tty` — interactive Claude session
-  - two bind mounts by default: the workspace and `~/.claude`, plus
+  - two bind mounts by default: the workspace (unless the current
+    directory failed the check in section 5) and `~/.claude`, plus
     any directory added with `--dir` (see section 4), read-only
     unless `:rw` was requested
 
-## 7. Verify the boundary
+## 8. Verify the boundary
 
 Inside the container, these should fail or be absent:
 
@@ -157,7 +190,7 @@ These should exist:
     ls /workspace
     ls ~/.claude
 
-## 8. Important properties
+## 9. Important properties
 
 Do not extend the run command to mount:
 
@@ -181,7 +214,7 @@ There is currently no SSH integration. The container has no access to
 host SSH keys or the host `ssh-agent`, so `git` operations against
 private remotes will not work from inside the sandbox.
 
-## 9. Network
+## 10. Network
 
 This configuration intentionally does not claim to restrict network
 egress. Claude Code needs network access to Anthropic, and additional
