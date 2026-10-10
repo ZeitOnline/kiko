@@ -173,6 +173,11 @@ run once.
   - `--init` — proper PID 1 for signal handling and reaping
   - `--rm` — no container state kept between runs
   - `--interactive --tty` — interactive Claude session
+  - `--name <directory>` — named after the directory it was started
+    in, so `container ls` tells several sessions apart. The name is
+    deliberately not made unique: a second run from the same directory
+    is refused by the runtime rather than quietly started alongside
+    the first.
   - two bind mounts by default: the workspace (unless the current
     directory failed the check in section 5) and `~/.claude`, plus
     any directory added with `--dir` (see section 4), read-only

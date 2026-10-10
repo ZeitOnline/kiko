@@ -75,6 +75,16 @@ workspace=mounted
 
 is_allowed "$cwd" || workspace=skipped
 
+# name the container after the calling directory, so `container ls` stays
+# readable; deliberately not made unique, so a second run from the same
+# directory is refused by the runtime
+name="$(basename "$cwd")"
+name="${name//[^A-Za-z0-9_.-]/-}"
+case "$name" in
+    *[A-Za-z0-9]*) ;;
+    *) name=workspace ;;
+esac
+
 add_dir() {
     local spec="$1" path mode target
 
@@ -152,6 +162,7 @@ exec container run \
     --dns 1.1.1.1 \
     --init \
     --interactive \
+    --name "$name" \
     --rm \
     --tty \
     ${workspace_volume[@]+"${workspace_volume[@]}"} \
