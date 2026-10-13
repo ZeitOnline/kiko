@@ -188,6 +188,8 @@ run once.
 
   - `--cap-drop ALL` — no Linux capabilities
   - `--dns 1.1.1.1` — fixed resolver, independent of host DNS
+  - `--memory 2G` — memory ceiling for the VM, so a runaway build
+    inside the container cannot squeeze the host
   - `--init` — proper PID 1 for signal handling and reaping
   - `--rm` — no container state kept between runs
   - `--interactive --tty` — interactive Claude session
