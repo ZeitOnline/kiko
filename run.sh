@@ -160,6 +160,7 @@ test -f "$HOME/.claude/claude.json" || echo '{}' >"$HOME/.claude/claude.json"
 exec container run \
     --cap-drop ALL \
     --dns 1.1.1.1 \
+    --memory 2G \
     --init \
     --interactive \
     --name "$name" \
