@@ -63,6 +63,8 @@ directories in \$KIKO_ALLOWED_DIRS (space-separated, currently
 '$allowed_dirs'); otherwise a warning is printed and /workspace
 stays empty.
 
+Variables named \$KIKO_ENV_FOO are passed into the container as FOO.
+
 Everything else is passed through to 'claude'.
 EOF
 }
@@ -84,6 +86,14 @@ case "$name" in
     *[A-Za-z0-9]*) ;;
     *) name=workspace ;;
 esac
+
+# hand KIKO_ENV_FOO=bar to the container as FOO=bar, so the environment
+# it sees has to be opted into one variable at a time
+envs=()
+for var in ${!KIKO_ENV_@}; do
+    [ "$var" != KIKO_ENV_ ] || continue
+    envs+=(--env "${var#KIKO_ENV_}=${!var}")
+done
 
 add_dir() {
     local spec="$1" path mode target
@@ -166,6 +176,7 @@ exec container run \
     --name "$name" \
     --rm \
     --tty \
+    ${envs[@]+"${envs[@]}"} \
     ${workspace_volume[@]+"${workspace_volume[@]}"} \
     --volume "${HOME}/.claude:/home/kiko/.claude:rw" \
     ${volumes[@]+"${volumes[@]}"} \

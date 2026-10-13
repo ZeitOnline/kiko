@@ -150,7 +150,25 @@ Entries that do not exist are ignored, and an empty
 current directory — directories added with `--dir` (section 4) are
 explicit by nature and are mounted as asked.
 
-## 6. What is in the image
+## 6. Passing environment variables
+
+The container starts with a clean environment: nothing from the host
+shell leaks in, which is the point. Variables that Claude or a tool
+inside the container genuinely needs are opted in one at a time, by
+exporting them with a `KIKO_ENV_` prefix. `run.sh` passes them on with
+the prefix stripped:
+
+    KIKO_ENV_GITHUB_TOKEN=ghp_… ./run.sh
+
+arrives in the container as `GITHUB_TOKEN`. The prefix keeps the
+decision explicit: the host variable has a different name than the
+one the container sees, so nothing is forwarded just because it
+happened to be in the environment.
+
+Values are passed verbatim, including spaces and newlines. A bare
+`KIKO_ENV_` (no name after the prefix) is ignored.
+
+## 7. What is in the image
 
 Base is `ubuntu:26.04` with a non-root user `kiko`:
 
@@ -164,7 +182,7 @@ file also lives in the host-mounted configuration directory instead of
 in the container's home. This way the initial setup only needs to be
 run once.
 
-## 7. Container settings
+## 8. Container settings
 
 `run.sh` runs the container with:
 
@@ -178,12 +196,14 @@ run once.
     deliberately not made unique: a second run from the same directory
     is refused by the runtime rather than quietly started alongside
     the first.
+  - `--env NAME=…` — one per `KIKO_ENV_NAME` in the host environment
+    (see section 6); none by default
   - two bind mounts by default: the workspace (unless the current
     directory failed the check in section 5) and `~/.claude`, plus
     any directory added with `--dir` (see section 4), read-only
     unless `:rw` was requested
 
-## 8. Verify the boundary
+## 9. Verify the boundary
 
 Inside the container, these should fail or be absent:
 
@@ -195,7 +215,7 @@ These should exist:
     ls /workspace
     ls ~/.claude
 
-## 9. Important properties
+## 10. Important properties
 
 Do not extend the run command to mount:
 
@@ -219,7 +239,7 @@ There is currently no SSH integration. The container has no access to
 host SSH keys or the host `ssh-agent`, so `git` operations against
 private remotes will not work from inside the sandbox.
 
-## 10. Network
+## 11. Network
 
 This configuration intentionally does not claim to restrict network
 egress. Claude Code needs network access to Anthropic, and additional
