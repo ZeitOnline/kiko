@@ -34,14 +34,24 @@ resolve() {
     (cd "$path" && pwd -P)
 }
 
+# macOS compares paths case-insensitively, so `cd ~/Work/proj` has to
+# count as being inside ~/work/ -- fold the case away before comparing
+lower() {
+    printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 is_allowed() {
-    local dir="$1" roots root
+    local dir roots root
+    dir="$(lower "$1")"
     IFS=' ' read -r -a roots <<<"$allowed_dirs"
     for root in ${roots[@]+"${roots[@]}"}; do
         root="$(resolve "$root")" || continue
-        case "$dir" in
-            "$root" | "$root"/*) return 0 ;;
-        esac
+        root="$(lower "$root")"
+        # a root of "/" would otherwise only ever match "/" itself
+        [ "$root" != / ] || root=""
+        if [ "$dir" = "$root" ] || [ "${dir#"$root"/}" != "$dir" ]; then
+            return 0
+        fi
     done
     return 1
 }
@@ -96,7 +106,7 @@ for var in ${!KIKO_ENV_@}; do
 done
 
 add_dir() {
-    local spec="$1" path mode target
+    local spec="$1" path resolved mode target
 
     mode=ro
     case "$spec" in
@@ -107,10 +117,11 @@ add_dir() {
 
     [ -n "$path" ] || die "empty directory in '$spec'"
 
-    path="$(resolve "$path")" || die "not a directory: $path"
+    resolved="$(resolve "$path")" || die "not a directory: $path"
+    path="$resolved"
     target="/workspace/$(basename "$path")"
 
-    if [ "$workspace" = mounted ] && [ "$path" = "$cwd" ]; then
+    if [ "$workspace" = mounted ] && [ "$(lower "$path")" = "$(lower "$cwd")" ]; then
         die "$path is already mounted as /workspace"
     fi
     case "$targets" in

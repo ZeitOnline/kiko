@@ -145,6 +145,11 @@ nothing of the host to look at rather than with the wrong thing:
     run.sh: warning: /Users/me is not inside any of the allowed directories (~/work/)
     run.sh: warning: not mounting it as /workspace; set $KIKO_ALLOWED_DIRS to allow it
 
+The comparison ignores case, because macOS does: having `cd ~/Work`
+leave the project unmounted while `cd ~/work` mounts it would be a
+puzzle, not a safeguard. The directory is still mounted under the
+spelling it was reached by.
+
 Entries that do not exist are ignored, and an empty
 `KIKO_ALLOWED_DIRS` allows nothing at all. The check only covers the
 current directory — directories added with `--dir` (section 4) are
