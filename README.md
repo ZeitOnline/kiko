@@ -60,7 +60,7 @@ From this directory run:
 This builds the image `kiko:latest`.
 
 `--dns` matters on the first build: it starts the build VM with a fixed
-resolver, the same one `run.sh` uses (see section 6). Without it the
+resolver, the same one `run.sh` uses (see section 9). Without it the
 VM asks the host forwarder at `192.168.64.1` over UDP, which some VPN
 clients (e.g. Zscaler) swallow; `apt-get update` then times out, exits
 0 with an empty index, and the following `apt-get install` fails with
@@ -186,7 +186,80 @@ happened to be in the environment.
 Values are passed verbatim, including spaces and newlines. A bare
 `KIKO_ENV_` (no name after the prefix) is ignored.
 
-## 7. What is in the image
+## 7. Reaching a VPN on the host
+
+A VPN client on the Mac — Zscaler Client Connector, for instance —
+usually does not cover the container. `container` runs its VMs on
+macOS's vmnet in NAT mode, and vmnet forwards those packets in the
+kernel, past the client's network extension, so they leave on the
+plain interface with the Mac's own public address. The symptom is a
+container that has working internet but cannot reach anything behind
+the VPN.
+
+Check on the Mac which route it takes:
+
+    curl -4 https://api.ipify.org          # the Mac's outgoing address
+    route -n get <internal address>        # en0 or utun*?
+
+If the Mac itself goes out via `en0`, the VPN is not routing that
+address at all and the container is innocent — fix the split-tunnel
+configuration. If the Mac goes out via `utun*` and the container does
+not, the client is only handling the Mac's own traffic.
+
+`container` has no option for this: its networking is NAT (plus
+host-only), with nothing for VPNs or proxies. There is also a known
+bug where vmnet's NAT network is bound to the host's network state at
+the time it was created and does not follow a tunnel that comes up
+later, which [PR #1666](https://github.com/apple/container/pull/1666)
+addresses and [issue #1881](https://github.com/apple/container/issues/1881)
+reports as not recovering even after `container system` is restarted.
+Connecting the VPN first and then running `container system stop &&
+container system start` is worth a minute, but may not stick.
+
+The reliable lever is a proxy on the Mac. The VPN client treats it as
+an ordinary local process, so the proxy's own connections do go through
+the tunnel:
+
+    brew install tinyproxy
+    tinyproxy -d -c <(printf 'Port 3128\nListen 192.168.64.1\nAllow 192.168.64.0/24\n')
+
+It has to listen on the vmnet gateway address (usually
+`192.168.64.1`), not on `127.0.0.1` — inside the container, localhost
+is the container.
+
+Point `run.sh` at it with `KIKO_PROXY`:
+
+    KIKO_PROXY=http://192.168.64.1:3128 ./run.sh
+
+That sets `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` inside the
+container, in both spellings, since tools disagree about which they
+read. `NO_PROXY` defaults to `localhost,127.0.0.1` and can be extended
+with `KIKO_NO_PROXY`:
+
+    KIKO_NO_PROXY='localhost,127.0.0.1,.zeit.de' KIKO_PROXY=… ./run.sh
+
+Setting it here rather than in `~/.claude/settings.json` keeps it with
+the rest of the sandbox configuration, and covers everything in the
+container rather than only Claude Code.
+
+### TLS inspection
+
+Zscaler and friends usually inspect TLS, which means the container has
+to trust their root CA or every request fails on certificate errors
+instead of on a 403. Export the certificate from the Mac's keychain
+into a directory, mount it, and point the tools at it:
+
+    ./run.sh --dir ~/work/certs \
+      KIKO_ENV_NODE_EXTRA_CA_CERTS=/workspace/certs/zscaler-root.pem
+
+Node — and therefore Claude Code — reads `NODE_EXTRA_CA_CERTS`.
+`curl`, `git` and the Python tooling use the system store instead, so
+for those the certificate has to be copied to
+`/usr/local/share/ca-certificates/` and `update-ca-certificates` run,
+which needs to happen in the `Dockerfile` rather than at runtime: the
+container user is not root.
+
+## 8. What is in the image
 
 Base is `ubuntu:26.04` with a non-root user `kiko`:
 
@@ -200,7 +273,7 @@ file also lives in the host-mounted configuration directory instead of
 in the container's home. This way the initial setup only needs to be
 run once.
 
-## 8. Container settings
+## 9. Container settings
 
 `run.sh` runs the container with:
 
@@ -217,13 +290,14 @@ run once.
     is refused by the runtime rather than quietly started alongside
     the first.
   - `--env NAME=…` — one per `KIKO_ENV_NAME` in the host environment
-    (see section 6); none by default
+    (see section 6), plus the proxy variables if `KIKO_PROXY` is set
+    (see section 7); none by default
   - two bind mounts by default: the workspace (unless the current
     directory failed the check in section 5) and `~/.claude`, plus
     any directory added with `--dir` (see section 4), read-only
     unless `:rw` was requested
 
-## 9. Verify the boundary
+## 10. Verify the boundary
 
 Inside the container, these should fail or be absent:
 
@@ -235,7 +309,7 @@ These should exist:
     ls /workspace
     ls ~/.claude
 
-## 10. Important properties
+## 11. Important properties
 
 Do not extend the run command to mount:
 
@@ -259,7 +333,7 @@ There is currently no SSH integration. The container has no access to
 host SSH keys or the host `ssh-agent`, so `git` operations against
 private remotes will not work from inside the sandbox.
 
-## 11. Network
+## 12. Network
 
 This configuration intentionally does not claim to restrict network
 egress. Claude Code needs network access to Anthropic, and additional

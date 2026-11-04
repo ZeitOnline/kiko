@@ -74,6 +74,8 @@ directories in \$KIKO_ALLOWED_DIRS (space-separated, currently
 stays empty.
 
 Variables named \$KIKO_ENV_FOO are passed into the container as FOO.
+\$KIKO_PROXY sets the proxy variables inside it, \$KIKO_NO_PROXY the
+exceptions (default 'localhost,127.0.0.1').
 
 Everything else is passed through to 'claude'.
 EOF
@@ -104,6 +106,17 @@ for var in ${!KIKO_ENV_@}; do
     [ "$var" != KIKO_ENV_ ] || continue
     envs+=(--env "${var#KIKO_ENV_}=${!var}")
 done
+
+# the container's traffic leaves through vmnet's NAT and does not follow a
+# VPN on the host, so route it through a proxy there instead (see README)
+if [ -n "${KIKO_PROXY-}" ]; then
+    for var in HTTPS_PROXY https_proxy HTTP_PROXY http_proxy; do
+        envs+=(--env "$var=$KIKO_PROXY")
+    done
+    for var in NO_PROXY no_proxy; do
+        envs+=(--env "$var=${KIKO_NO_PROXY-localhost,127.0.0.1}")
+    done
+fi
 
 add_dir() {
     local spec="$1" path resolved mode target
