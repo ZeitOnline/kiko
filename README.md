@@ -257,25 +257,27 @@ Setting it here rather than in `~/.claude/settings.json` keeps it with
 the rest of the sandbox configuration, and covers everything in the
 container rather than only Claude Code.
 
-Rather than remembering the address, let the shell look it up. vmnet's
-gateway is the host end of the `bridge` interface the VM runs on, so a
-shell function in `~/.zshrc` can fill it in:
+Rather than remembering the address, let the shell look it up —
+`container` knows it. A function in `~/.zshrc`:
 
     claude() {
         local gw port=8888
-        gw="$(ipconfig getifaddr bridge100 2>/dev/null)"
+        gw="$(container network inspect default 2>/dev/null |
+              grep -o '"ipv4Gateway"[^,}]*' | head -1 |
+              sed -e 's/.*: *"*//' -e 's/[",].*//' -e 's|/.*||')"
         KIKO_PROXY="${gw:+http://$gw:$port}" /path/to/this/repo/run.sh "$@"
     }
 
-`${gw:+…}` leaves `KIKO_PROXY` empty when there is no bridge interface
-yet — before the first container of the session — and `run.sh` ignores
-an empty value, so the proxy simply does not get configured instead of
-being configured wrongly. A function rather than an alias, because the
-lookup has to happen per call: at the time `~/.zshrc` is read there is
-usually no bridge interface at all.
+With `jq` installed, the three lines of text wrangling collapse into
+`jq -r '.[].status.ipv4Gateway'`; the version above keeps the shell
+profile free of extra dependencies. The `sed` also strips a `/24`
+suffix, should the field ever carry one.
 
-If `container` has created more than one network, the interface may be
-`bridge101` or higher; `ifconfig -l` lists them.
+A function rather than an alias, because the lookup has to happen per
+call. `${gw:+…}` leaves `KIKO_PROXY` empty if the lookup finds nothing
+— the runtime is not up, or that network does not exist — and `run.sh`
+ignores an empty value, so the proxy is then simply not configured
+instead of being configured wrongly.
 
 ### TLS inspection
 
