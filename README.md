@@ -258,15 +258,19 @@ the rest of the sandbox configuration, and covers everything in the
 container rather than only Claude Code.
 
 Rather than remembering the address, let the shell look it up —
-`container` knows it. A function in `~/.zshrc`:
+`container` knows it. A function in `~/.config/fish/functions/claude.fish`:
 
-    claude() {
-        local gw port=8888
-        gw="$(container network inspect default 2>/dev/null |
-              grep -o '"ipv4Gateway"[^,}]*' | head -1 |
-              sed -e 's/.*: *"*//' -e 's/[",].*//' -e 's|/.*||')"
-        KIKO_PROXY="${gw:+http://$gw:$port}" /path/to/this/repo/run.sh "$@"
-    }
+    function claude
+        set -l port 8888
+        set -l gw (container network inspect default 2>/dev/null |
+            grep -o '"ipv4Gateway"[^,}]*' | head -1 |
+            sed -e 's/.*: *"*//' -e 's/[",].*//' -e 's|/.*||')
+        set -lx KIKO_PROXY
+        if test -n "$gw"
+            set KIKO_PROXY "http://$gw:$port"
+        end
+        /path/to/this/repo/run.sh $argv
+    end
 
 With `jq` installed, the three lines of text wrangling collapse into
 `jq -r '.[].status.ipv4Gateway'`; the version above keeps the shell
@@ -274,10 +278,13 @@ profile free of extra dependencies. The `sed` also strips a `/24`
 suffix, should the field ever carry one.
 
 A function rather than an alias, because the lookup has to happen per
-call. `${gw:+…}` leaves `KIKO_PROXY` empty if the lookup finds nothing
-— the runtime is not up, or that network does not exist — and `run.sh`
-ignores an empty value, so the proxy is then simply not configured
-instead of being configured wrongly.
+call. `set -lx` keeps `KIKO_PROXY` local to the function and still
+exports it to `run.sh`; it has to be declared before the `if`, since
+fish scopes a variable to the block it was created in. When the lookup
+finds nothing — the runtime is not up, or that network does not exist
+— the variable stays empty, and `run.sh` ignores an empty value, so
+the proxy is then simply not configured instead of being configured
+wrongly.
 
 ### TLS inspection
 
