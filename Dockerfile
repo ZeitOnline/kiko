@@ -1,11 +1,15 @@
 FROM ghcr.io/astral-sh/uv:latest AS uv
-FROM ubuntu:26.04 AS kiko
+FROM debian:trixie-slim AS kiko
 
+# the slim base leaves out `ca-certificates` (every download below needs
+# it), `xz-utils` (postgrest ships a .tar.xz) and `procps` (ps, pkill),
+# so those are installed explicitly rather than hoped for.
+#
 # `update` and `install` in one layer: `apt-get update` exits 0 even when
 # every index fetch fails, so a separate layer would cache an empty index.
 RUN DEBIAN_FRONTEND=noninteractive apt-get update --error-on=any \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes \
-        curl git jq ripgrep \
+        ca-certificates curl git jq procps ripgrep xz-utils \
         nginx postgresql \
         kustomize skopeo
 RUN curl -fsSL https://pb33f.io/wiretap/install.sh | bash
@@ -21,10 +25,12 @@ RUN useradd --create-home --shell /bin/bash ${USER}
 RUN mkdir -p ${WORK}
 RUN chown ${USER}:${USER} ${WORK}
 
-# postgresql setup to run cluster using `pg_ctlcluster 18 main start`
+# postgresql setup to run cluster using `pg_ctlcluster 17 main start`
+# (trixie ships 17; the number has to match what `postgresql` pulled in)
+ARG POSTGRES_VERSION=17
 RUN usermod -aG ssl-cert ${USER}
 RUN chown -R ${USER}:${USER} /etc/postgresql /var/*/postgresql
-RUN sed -i 's/peer$/trust/' /etc/postgresql/18/main/pg_hba.conf
+RUN sed -i 's/peer$/trust/' /etc/postgresql/${POSTGRES_VERSION}/main/pg_hba.conf
 ENV PGUSER=postgres
 ENV PGDATABASE=postgres
 

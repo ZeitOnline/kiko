@@ -305,12 +305,25 @@ container user is not root.
 
 ## 8. What is in the image
 
-Base is `ubuntu:26.04` with a non-root user `kiko`:
+Base is `debian:trixie-slim` with a non-root user `kiko`:
 
-  - `curl`, `git`, `jq`, `ripgrep`
+  - `curl`, `git`, `jq`, `ripgrep`, `kustomize`, `skopeo`
+  - `nginx`, PostgreSQL 17, `postgrest`, `wiretap`
   - `uv` and Python 3.14
-  - `uv`-installed tools: `lefthook`, `ruff`, `tox`, `yq`
+  - `uv`-installed tools: `editorconfig-checker`, `lefthook`, `ruff`,
+    `tox`, `yamllint`, `yq`
   - Claude Code, installed via `https://claude.ai/install.sh`
+
+The slim base leaves out `ca-certificates`, `xz-utils` and `procps`,
+which the `Dockerfile` therefore installs by name — the first is
+needed by every download it makes, and relying on it arriving as a
+recommended dependency of `curl` would be a trap for the day someone
+adds `--no-install-recommends`.
+
+The PostgreSQL version is whatever the distribution ships, 17 here,
+and the cluster is started with `pg_ctlcluster 17 main start`. The
+number appears in the `Dockerfile` as `POSTGRES_VERSION` and has to be
+bumped with the base image.
 
 `~/.claude.json` is symlinked to `~/.claude/claude.json` so that this
 file also lives in the host-mounted configuration directory instead of
