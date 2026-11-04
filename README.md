@@ -227,9 +227,24 @@ It has to listen on the vmnet gateway address (usually
 `192.168.64.1`), not on `127.0.0.1` — inside the container, localhost
 is the container.
 
+Running it as a service is less typing and survives a reboot. Add one
+line to `/opt/homebrew/etc/tinyproxy/tinyproxy.conf`:
+
+    Allow 192.168.0.0/16
+
+then start it:
+
+    brew services restart tinyproxy
+
+The `/16` covers whichever `192.168.6x.0/24` subnet vmnet hands out,
+which is not guaranteed to stay the same. The stock configuration
+listens on all interfaces, so no `Listen` line is needed — `Allow` is
+what keeps it to the local networks. Note the `Port` it sets (8888
+unless changed); that is the port to point `run.sh` at.
+
 Point `run.sh` at it with `KIKO_PROXY`:
 
-    KIKO_PROXY=http://192.168.64.1:3128 ./run.sh
+    KIKO_PROXY=http://192.168.64.1:8888 ./run.sh
 
 That sets `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` inside the
 container, in both spellings, since tools disagree about which they
@@ -241,6 +256,26 @@ with `KIKO_NO_PROXY`:
 Setting it here rather than in `~/.claude/settings.json` keeps it with
 the rest of the sandbox configuration, and covers everything in the
 container rather than only Claude Code.
+
+Rather than remembering the address, let the shell look it up. vmnet's
+gateway is the host end of the `bridge` interface the VM runs on, so a
+shell function in `~/.zshrc` can fill it in:
+
+    claude() {
+        local gw port=8888
+        gw="$(ipconfig getifaddr bridge100 2>/dev/null)"
+        KIKO_PROXY="${gw:+http://$gw:$port}" /path/to/this/repo/run.sh "$@"
+    }
+
+`${gw:+…}` leaves `KIKO_PROXY` empty when there is no bridge interface
+yet — before the first container of the session — and `run.sh` ignores
+an empty value, so the proxy simply does not get configured instead of
+being configured wrongly. A function rather than an alias, because the
+lookup has to happen per call: at the time `~/.zshrc` is read there is
+usually no bridge interface at all.
+
+If `container` has created more than one network, the interface may be
+`bridge101` or higher; `ifconfig -l` lists them.
 
 ### TLS inspection
 
